@@ -1,5 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2016 XiaoMi, Inc.
+/* Copyright (c) 2013-2015,2017 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -104,7 +103,11 @@ static int32_t msm_sensor_driver_create_i2c_v4l_subdev
 	s_ctrl->msm_sd.sd.entity.name =	s_ctrl->msm_sd.sd.name;
 	s_ctrl->sensordata->sensor_info->session_id = session_id;
 	s_ctrl->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x3;
-	msm_sd_register(&s_ctrl->msm_sd);
+	rc = msm_sd_register(&s_ctrl->msm_sd);
+	if (rc < 0) {
+		pr_err("failed: msm_sd_register rc %d", rc);
+		return rc;
+	}
 	CDBG("%s:%d\n", __func__, __LINE__);
 	return rc;
 }
@@ -134,7 +137,11 @@ static int32_t msm_sensor_driver_create_v4l_subdev
 	s_ctrl->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_SENSOR;
 	s_ctrl->msm_sd.sd.entity.name = s_ctrl->msm_sd.sd.name;
 	s_ctrl->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x3;
-	msm_sd_register(&s_ctrl->msm_sd);
+	rc = msm_sd_register(&s_ctrl->msm_sd);
+	if (rc < 0) {
+		pr_err("failed: msm_sd_register rc %d", rc);
+		return rc;
+	}
 	msm_sensor_v4l2_subdev_fops = v4l2_subdev_fops;
 #ifdef CONFIG_COMPAT
 	msm_sensor_v4l2_subdev_fops.compat_ioctl32 =
@@ -644,11 +651,6 @@ static int32_t msm_sensor_driver_is_special_support(
 	return rc;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_HYDROGEN
-extern int hydrogen_get_back_sensor_name(char *);
-extern int hydrogen_get_front_sensor_name(char *);
-#endif
-
 /* static function definition */
 int32_t msm_sensor_driver_probe(void *setting,
 	struct msm_sensor_info_t *probed_info, char *entity_name)
@@ -661,10 +663,6 @@ int32_t msm_sensor_driver_probe(void *setting,
 
 	unsigned long                        mount_pos = 0;
 	uint32_t                             is_yuv;
-#ifdef CONFIG_MACH_XIAOMI_HYDROGEN
-	char hydrogen_back_sensor_name[32];
-	char hydrogen_front_sensor_name[32];
-#endif
 
 	/* Validate input parameters */
 	if (!setting) {
@@ -747,30 +745,6 @@ int32_t msm_sensor_driver_probe(void *setting,
 			goto free_slave_info;
 		}
 	}
-
-#ifdef CONFIG_MACH_XIAOMI_HYDROGEN
-	if (strncmp(slave_info->eeprom_name, "dw9763", strlen("dw9763")) == 0) {
-		hydrogen_get_back_sensor_name(hydrogen_back_sensor_name);
-		CDBG("slave_info sensor_name = %s, back_sensor_name - %s\n",
-			slave_info->sensor_name, hydrogen_back_sensor_name);
-		if (strcmp(slave_info->sensor_name, hydrogen_back_sensor_name) != 0) {
-			pr_err("%s %d: hydrogen back sensor name not match!\n", __func__, __LINE__);
-			rc = -EFAULT;
-			goto free_slave_info;
-		}
-	}
-
-	if (strncmp(slave_info->eeprom_name, "s5k5e8", strlen("s5k5e8")) == 0) {
-		hydrogen_get_front_sensor_name(hydrogen_front_sensor_name);
-		CDBG("slave_info sensor_name = %s, front_sensor_name - %s\n",
-			slave_info->sensor_name, hydrogen_front_sensor_name);
-		if (strcmp(slave_info->sensor_name, hydrogen_front_sensor_name) != 0) {
-			pr_err("%s %d: hydrogen front sensor name not match!\n", __func__, __LINE__);
-			rc = -EFAULT;
-			goto free_slave_info;
-		}
-	}
-#endif
 
 	/* Print slave info */
 	CDBG("camera id %d Slave addr 0x%X addr_type %d\n",
@@ -961,12 +935,6 @@ CSID_TG:
 	pr_err("%s probe succeeded", slave_info->sensor_name);
 
 	/*
-	  Set probe succeeded flag to 1 so that no other camera shall
-	 * probed on this slot
-	 */
-	s_ctrl->is_probe_succeed = 1;
-
-	/*
 	 * Update the subdevice id of flash-src based on availability in kernel.
 	 */
 	if (strlen(slave_info->flash_name) == 0) {
@@ -1018,6 +986,11 @@ CSID_TG:
 
 	msm_sensor_fill_sensor_info(s_ctrl, probed_info, entity_name);
 
+	/*
+	 * Set probe succeeded flag to 1 so that no other camera shall
+	 * probed on this slot
+	 */
+	s_ctrl->is_probe_succeed = 1;
 	return rc;
 
 camera_power_down:
