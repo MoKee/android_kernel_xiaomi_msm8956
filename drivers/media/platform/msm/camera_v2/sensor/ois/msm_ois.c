@@ -427,11 +427,13 @@ static long msm_ois_subdev_ioctl(struct v4l2_subdev *sd,
 			pr_err("o_ctrl->i2c_client.i2c_func_tbl NULL\n");
 			return -EINVAL;
 		} else {
+			mutex_lock(o_ctrl->ois_mutex);
 			rc = msm_ois_power_down(o_ctrl);
 			if (rc < 0) {
 				pr_err("%s:%d OIS Power down failed\n",
 					__func__, __LINE__);
 			}
+			mutex_unlock(o_ctrl->ois_mutex);
 			return msm_ois_close(sd, NULL);
 		}
 	default:
@@ -541,14 +543,22 @@ static long msm_ois_subdev_do_ioctl(
 	struct file *file, unsigned int cmd, void *arg)
 {
 	long rc = 0;
-	struct video_device *vdev = video_devdata(file);
-	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
-	struct msm_ois_cfg_data32 *u32 =
-		(struct msm_ois_cfg_data32 *)arg;
+	struct video_device *vdev;
+	struct v4l2_subdev *sd;
+	struct msm_ois_cfg_data32 *u32;
 	struct msm_ois_cfg_data ois_data;
-	void *parg = arg;
+	void *parg;
 	struct msm_camera_i2c_seq_reg_setting settings;
 	struct msm_camera_i2c_seq_reg_setting32 settings32;
+
+	if (!file || !arg) {
+		pr_err("%s:failed NULL parameter\n", __func__);
+		return -EINVAL;
+	}
+	vdev = video_devdata(file);
+	sd = vdev_to_v4l2_subdev(vdev);
+	u32 = (struct msm_ois_cfg_data32 *)arg;
+	parg = arg;
 
 	ois_data.cfgtype = u32->cfgtype;
 
@@ -596,6 +606,10 @@ static long msm_ois_subdev_do_ioctl(
 			parg = &ois_data;
 			break;
 		}
+		break;
+	case VIDIOC_MSM_OIS_CFG:
+		pr_err("%s: invalid cmd 0x%x received\n", __func__, cmd);
+		return -EINVAL;
 	}
 	rc = msm_ois_subdev_ioctl(sd, cmd, parg);
 
