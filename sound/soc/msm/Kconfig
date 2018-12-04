@@ -49,7 +49,7 @@ config SND_SOC_MSM_QDSP6_INTF
 
 config SND_SOC_MSM_QDSP6V2_INTF
 	bool "SoC Q6 audio driver for MSM8974"
-	depends on MSM_QDSP6_APRV2
+	depends on MSM_QDSP6_APRV2 || MSM_QDSP6_APRV3
 	help
 	 To add support for SoC audio on MSM8974.
 	 This will enable all the platform specific
@@ -247,6 +247,13 @@ config SND_SOC_APQ8084
 	 the machine drivers and the corresponding
 	 DAI-links.
 
+config SPEAKER_EXT_PA
+	default n
+	bool "Speaker external PA"
+	help
+	  Support for external PA.
+
+
 config SND_SOC_MSM8X16
 	tristate "SoC Machine driver for MSM8X16 boards"
 	depends on ARCH_MSM8916
@@ -267,6 +274,7 @@ config SND_SOC_MSM8X16
 	select SND_SOC_CPE
 	select SND_HWDEP
         select DTS_EAGLE
+	select SPEAKER_EXT_PA
 	help
 	 To add support for SoC audio on MSM8X16.
 	 This will enable sound soc drivers which
@@ -324,7 +332,6 @@ config SND_SOC_MSM8994
 	select QTI_PP
 	select DTS_SRS_TM
 	select SND_SOC_CPE
-	select MSM_ULTRASOUND
 	select DOLBY_DS2
 	select SND_HWDEP
         select DTS_EAGLE
