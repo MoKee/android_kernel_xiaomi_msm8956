@@ -118,17 +118,14 @@ do {							\
 } while (0)
 
 static atomic_t __su_instances;
-
 int su_instances(void)
 {
 	return atomic_read(&__su_instances);
 }
-
 bool su_running(void)
 {
 	return su_instances() > 0;
 }
-
 bool su_visible(void)
 {
 	kuid_t uid = current_uid();
@@ -138,12 +135,10 @@ bool su_visible(void)
 		return true;
 	return false;
 }
-
 void su_exec(void)
 {
 	atomic_inc(&__su_instances);
 }
-
 void su_exit(void)
 {
 	atomic_dec(&__su_instances);
@@ -262,14 +257,12 @@ struct static_key sched_feat_keys[__SCHED_FEAT_NR] = {
 
 static void sched_feat_disable(int i)
 {
-	if (static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_dec(&sched_feat_keys[i]);
+	static_key_disable(&sched_feat_keys[i]);
 }
 
 static void sched_feat_enable(int i)
 {
-	if (!static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_inc(&sched_feat_keys[i]);
+	static_key_enable(&sched_feat_keys[i]);
 }
 #else
 static void sched_feat_disable(int i) { };
@@ -1605,7 +1598,6 @@ static inline int got_boost_kick(void)
 
 	return test_bit(BOOST_KICK, &rq->hmp_flags);
 }
-
 
 static inline void clear_boost_kick(int cpu)
 {
@@ -3802,7 +3794,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * If the owning (remote) cpu is still in the middle of schedule() with
 	 * this task as prev, wait until its done referencing the task.
 	 */
-	while (cpu_relaxed_read(&(p->on_cpu)))
+        while (cpu_relaxed_read(&(p->on_cpu)))
 		cpu_read_relax();
 	/*
 	 * Pairs with the smp_wmb() in finish_lock_switch().
@@ -7676,7 +7668,8 @@ void show_state_filter(unsigned long state_filter)
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SYSRQ_SCHED_DEBUG
-	sysrq_sched_debug_show();
+	if (!state_filter)
+		sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
