@@ -234,10 +234,19 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
 	SETTING(TERM_CURRENT,	 0x40C,   2,      250),
 	SETTING(CHG_TERM_CURRENT, 0x4F8,   2,      250),
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3100),
+	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3200),
+#else
 	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3350),
 	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3400),
+#endif
 	SETTING(VBAT_EST_DIFF,	 0x000,   0,      30),
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+	SETTING(DELTA_SOC,	 0x450,   3,      1),
+#else
 	SETTING(DELTA_SOC,	 0x450,   3,      2),
+#endif
 	SETTING(SOC_MAX,	 0x458,   1,      85),
 	SETTING(SOC_MIN,	 0x458,   2,      15),
 	SETTING(BATT_LOW,	 0x458,   0,      4200),
@@ -1505,7 +1514,10 @@ static int fg_mem_masked_write(struct fg_chip *chip, u16 addr,
 
 static int soc_to_setpoint(int soc)
 {
-	return DIV_ROUND_CLOSEST(soc * 255, 100);
+	if (soc == 0)
+		return 1;
+	else
+		return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
@@ -2912,7 +2924,7 @@ static int fg_get_cc_soc(struct fg_chip *chip, int *cc_soc)
 static int fg_cap_learning_process_full_data(struct fg_chip *chip)
 {
 	int cc_pc_val, rc = -EINVAL;
-	unsigned int cc_soc_delta_pc;
+	int64_t cc_soc_delta_pc;
 	int64_t delta_cc_uah;
 
 	if (!chip->learning_data.active)
@@ -2930,19 +2942,19 @@ static int fg_cap_learning_process_full_data(struct fg_chip *chip)
 		goto fail;
 	}
 
-	cc_soc_delta_pc = DIV_ROUND_CLOSEST(
-			abs(cc_pc_val - chip->learning_data.init_cc_pc_val)
-			* 100, FULL_PERCENT_28BIT);
+	cc_soc_delta_pc = abs(cc_pc_val - chip->learning_data.init_cc_pc_val);
+	cc_soc_delta_pc *= 100;
+
+	cc_soc_delta_pc = div64_s64(cc_soc_delta_pc, FULL_PERCENT_28BIT);
 
 	delta_cc_uah = div64_s64(
-			chip->learning_data.learned_cc_uah * cc_soc_delta_pc,
+			chip->nom_cap_uah * cc_soc_delta_pc,
 			100);
 	chip->learning_data.cc_uah = delta_cc_uah + chip->learning_data.cc_uah;
 
-	if (fg_debug_mask & FG_AGING)
-		pr_info("current cc_soc=%d cc_soc_pc=%d total_cc_uah = %lld\n",
-				cc_pc_val, cc_soc_delta_pc,
-				chip->learning_data.cc_uah);
+	pr_info("current cc_soc=%d cc_soc_pc=%lld total_cc_uah = %lld delta_cc_uah = %lld\n",
+		cc_pc_val, cc_soc_delta_pc,
+		chip->learning_data.cc_uah, delta_cc_uah);
 
 	return 0;
 
@@ -3044,7 +3056,7 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 {
 	int64_t max_inc_val, min_dec_val, old_cap;
 
-	max_inc_val = chip->learning_data.learned_cc_uah
+	max_inc_val = chip->nom_cap_uah
 			* (1000 + chip->learning_data.max_increment);
 	do_div(max_inc_val, 1000);
 
@@ -3062,10 +3074,9 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 			chip->learning_data.cc_uah;
 
 	fg_cap_learning_save_data(chip);
-	if (fg_debug_mask & FG_AGING)
-		pr_info("final cc_uah = %lld, learned capacity %lld -> %lld uah\n",
-				chip->learning_data.cc_uah,
-				old_cap, chip->learning_data.learned_cc_uah);
+	pr_info("final cc_uah = %lld, learned capacity %lld -> %lld uah\n",
+		chip->learning_data.cc_uah,
+		old_cap, chip->learning_data.learned_cc_uah);
 }
 
 static int get_vbat_est_diff(struct fg_chip *chip)
@@ -3145,8 +3156,7 @@ static int fg_cap_learning_check(struct fg_chip *chip)
 
 			chip->learning_data.init_cc_pc_val = cc_pc_val;
 			chip->learning_data.active = true;
-			if (fg_debug_mask & FG_AGING)
-				pr_info("SW_CC_SOC based learning init_CC_SOC=%d\n",
+			pr_info("SW_CC_SOC based learning init_CC_SOC=%d\n",
 					chip->learning_data.init_cc_pc_val);
 		} else {
 			rc = fg_mem_masked_write(chip, CBITS_INPUT_FILTER_REG,
@@ -5790,8 +5800,7 @@ static int fg_common_hw_init(struct fg_chip *chip)
 		}
 	}
 
-	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
-			settings[FG_MEM_DELTA_SOC].value,
+	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF, 1,
 			settings[FG_MEM_DELTA_SOC].offset);
 	if (rc) {
 		pr_err("failed to write delta soc rc=%d\n", rc);
